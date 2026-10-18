@@ -14,12 +14,12 @@ sealed class BleSecond
     // worn and 0x29 once taken off, so this is the bit that follows their head sensor.
     const byte InEarBits = 0x02;
 
-    public int Adverts;
+    public int Adverts, RssiReadings;
     public long RssiSum;
     public readonly int[] RssiBuckets = new int[RssiBounds.Length + 1];
     public byte? Status;
     public string? Battery, Raw;
-    public int? AvgRssi => Adverts > 0 ? (int)(RssiSum / Adverts) : null;
+    public int? AvgRssi => RssiReadings > 0 ? (int)(RssiSum / RssiReadings) : null;
     public bool? Worn => IsWorn(Status);
 
     public static bool? IsWorn(byte? status) => status is byte s ? (s & InEarBits) != 0 : null;
@@ -39,6 +39,8 @@ sealed class BleMonitor(ushort model, Action<string> onEvent) : IDisposable
 {
     const ushort AppleCompanyId = 0x004C;
     const byte ProximityPairingType = 0x07;
+    // What Windows puts in RawSignalStrengthInDBm when it has no reading for a broadcast. It is not a signal level.
+    const short NoRssi = -127;
 
     readonly BluetoothLEAdvertisementWatcher _watcher = new() { ScanningMode = BluetoothLEScanningMode.Passive };
     readonly object _lock = new();
@@ -147,14 +149,19 @@ sealed class BleMonitor(ushort model, Action<string> onEvent) : IDisposable
             // Everything but the battery levels, so flags that are not decoded yet still show up as events when they change.
             var flags = $"{status:X2}{(payload.Length > 6 ? Convert.ToHexString(payload[6..Math.Min(8, payload.Length)]) : "")}";
             _current.Adverts++;
-            _current.RssiSum += rssi;
-            _current.RssiBuckets[BleSecond.Bucket(rssi)]++;
+            if (rssi != NoRssi)
+            {
+                _current.RssiReadings++;
+                _current.RssiSum += rssi;
+                _current.RssiBuckets[BleSecond.Bucket(rssi)]++;
+            }
             _current.Status = status;
             _current.Battery = battery;
             _current.Raw = raw;
-            if (battery != _lastBattery) announce = $"AirPods broadcast: battery {battery}, signal {rssi} dBm, {(worn ? "worn" : "not worn")} (raw {raw})";
-            else if (worn != _lastWorn) announce = $"AirPods {(worn ? "put on" : "taken off")}, signal {rssi} dBm (raw {_lastRaw} -> {raw})";
-            else if (flags != _lastFlags) announce = $"AirPods broadcast flags changed, signal {rssi} dBm (raw {_lastRaw} -> {raw})";
+            var signal = rssi == NoRssi ? "no signal reading" : $"signal {rssi} dBm";
+            if (battery != _lastBattery) announce = $"AirPods broadcast: battery {battery}, {signal}, {(worn ? "worn" : "not worn")} (raw {raw})";
+            else if (worn != _lastWorn) announce = $"AirPods {(worn ? "put on" : "taken off")}, {signal} (raw {_lastRaw} -> {raw})";
+            else if (flags != _lastFlags) announce = $"AirPods broadcast flags changed, {signal} (raw {_lastRaw} -> {raw})";
             _lastBattery = battery;
             _lastWorn = worn;
             _lastFlags = flags;
