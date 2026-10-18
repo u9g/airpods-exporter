@@ -7,10 +7,28 @@ namespace AirPodsExporter;
 
 sealed class BleSecond
 {
+    /// <summary>Upper bounds in dBm of the signal histogram's buckets; a last bucket holds everything stronger.</summary>
+    public static readonly int[] RssiBounds = [-90, -85, -80, -75, -70, -65, -60, -55, -50, -45, -40];
+
+    // The status byte's "in ear" flag in Apple's proximity-pairing broadcast. AirPods Max were seen sending 0x2B while
+    // worn and 0x29 once taken off, so this is the bit that follows their head sensor.
+    const byte InEarBits = 0x02;
+
     public int Adverts;
     public long RssiSum;
+    public readonly int[] RssiBuckets = new int[RssiBounds.Length + 1];
+    public byte? Status;
     public string? Battery, Raw;
     public int? AvgRssi => Adverts > 0 ? (int)(RssiSum / Adverts) : null;
+    public bool? Worn => IsWorn(Status);
+
+    public static bool? IsWorn(byte? status) => status is byte s ? (s & InEarBits) != 0 : null;
+
+    public static int Bucket(int rssi)
+    {
+        int i = Array.FindIndex(RssiBounds, bound => rssi <= bound);
+        return i < 0 ? RssiBounds.Length : i;
+    }
 }
 
 /// <summary>
@@ -28,7 +46,8 @@ sealed class BleMonitor(ushort model, Action<string> onEvent) : IDisposable
 
     readonly Dictionary<ushort, int> _otherModels = [];
     BleSecond _current = new();
-    string? _lastBattery;
+    string? _lastBattery, _lastFlags, _lastRaw;
+    bool? _lastWorn;
     volatile bool _disposed;
 
     public void Start()
@@ -122,12 +141,24 @@ sealed class BleMonitor(ushort model, Action<string> onEvent) : IDisposable
                 return;
             }
             var battery = DecodeBattery(payload[4], payload[5]);
+            byte status = payload[3];
+            bool worn = BleSecond.IsWorn(status) == true;
+            var raw = Convert.ToHexString(payload[..Math.Min(8, payload.Length)]);
+            // Everything but the battery levels, so flags that are not decoded yet still show up as events when they change.
+            var flags = $"{status:X2}{(payload.Length > 6 ? Convert.ToHexString(payload[6..Math.Min(8, payload.Length)]) : "")}";
             _current.Adverts++;
             _current.RssiSum += rssi;
+            _current.RssiBuckets[BleSecond.Bucket(rssi)]++;
+            _current.Status = status;
             _current.Battery = battery;
-            _current.Raw = Convert.ToHexString(payload[..Math.Min(8, payload.Length)]);
-            if (battery != _lastBattery) announce = $"AirPods broadcast: battery {battery}, signal {rssi} dBm";
+            _current.Raw = raw;
+            if (battery != _lastBattery) announce = $"AirPods broadcast: battery {battery}, signal {rssi} dBm, {(worn ? "worn" : "not worn")} (raw {raw})";
+            else if (worn != _lastWorn) announce = $"AirPods {(worn ? "put on" : "taken off")}, signal {rssi} dBm (raw {_lastRaw} -> {raw})";
+            else if (flags != _lastFlags) announce = $"AirPods broadcast flags changed, signal {rssi} dBm (raw {_lastRaw} -> {raw})";
             _lastBattery = battery;
+            _lastWorn = worn;
+            _lastFlags = flags;
+            _lastRaw = raw;
         }
         if (announce is not null) onEvent(announce);
     }
@@ -181,5 +212,106 @@ sealed class ClassicMonitor
             if (device is not null) return device;
         }
         return null;
+    }
+}
+
+sealed record BtDevice(string Name, string Transport, bool Connected);
+
+/// <summary>
+/// Follows the connection of every paired Bluetooth device. Another device on the PC's radio at the same time
+/// (a second headset, a speaker, a controller) takes airtime away from the AirPods' audio.
+/// </summary>
+sealed class PairedDevices(string filter, Action<string> onEvent) : IDisposable
+{
+    readonly object _lock = new();
+    readonly Dictionary<string, Tracked> _devices = [];
+    readonly List<DeviceWatcher> _watchers = [];
+
+    sealed record Tracked(string Name, string Transport, Func<bool> IsConnected, IDisposable Device);
+
+    public void Start()
+    {
+        Watch(BluetoothDevice.GetDeviceSelectorFromPairingState(true), "classic");
+        Watch(BluetoothLEDevice.GetDeviceSelectorFromPairingState(true), "le");
+    }
+
+    public BtDevice[] Snapshot()
+    {
+        lock (_lock)
+        {
+            return _devices.Values.Select(d => new BtDevice(d.Name, d.Transport, d.IsConnected())).OrderBy(d => d.Name).ToArray();
+        }
+    }
+
+    public void Dispose()
+    {
+        foreach (var watcher in _watchers)
+            if (watcher.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted) watcher.Stop();
+        lock (_lock)
+        {
+            foreach (var device in _devices.Values) device.Device.Dispose();
+            _devices.Clear();
+        }
+    }
+
+    void Watch(string selector, string transport)
+    {
+        var watcher = DeviceInformation.CreateWatcher(selector);
+        watcher.Added += (sender, info) => _ = AddAsync(info, transport);
+        watcher.Removed += (_, update) =>
+        {
+            lock (_lock)
+            {
+                if (_devices.Remove(update.Id, out var old)) old.Device.Dispose();
+            }
+        };
+        watcher.Updated += (_, _) => { }; // the watcher only reports changes after enumeration if all three events are handled
+        _watchers.Add(watcher);
+        try
+        {
+            watcher.Start();
+        }
+        catch (Exception ex)
+        {
+            onEvent($"Bluetooth: cannot list paired {transport} devices ({ex.Message})");
+        }
+    }
+
+    async Task AddAsync(DeviceInformation info, string transport)
+    {
+        try
+        {
+            Tracked tracked;
+            if (transport == "classic")
+            {
+                var device = await BluetoothDevice.FromIdAsync(info.Id);
+                if (device is null) return;
+                device.ConnectionStatusChanged += (d, _) => Changed(d.Name, transport, d.ConnectionStatus == BluetoothConnectionStatus.Connected);
+                tracked = new Tracked(device.Name, transport, () => device.ConnectionStatus == BluetoothConnectionStatus.Connected, device);
+            }
+            else
+            {
+                var device = await BluetoothLEDevice.FromIdAsync(info.Id);
+                if (device is null) return;
+                device.ConnectionStatusChanged += (d, _) => Changed(d.Name, transport, d.ConnectionStatus == BluetoothConnectionStatus.Connected);
+                tracked = new Tracked(device.Name, transport, () => device.ConnectionStatus == BluetoothConnectionStatus.Connected, device);
+            }
+            lock (_lock)
+            {
+                if (_devices.Remove(info.Id, out var old)) old.Device.Dispose();
+                _devices[info.Id] = tracked;
+            }
+        }
+        catch (Exception ex)
+        {
+            onEvent($"Bluetooth: cannot follow {info.Name} ({ex.Message})");
+        }
+    }
+
+    void Changed(string name, string transport, bool connected)
+    {
+        // The watched AirPods' own link is already reported by ClassicMonitor.
+        if (transport == "classic" && name.Contains(filter, StringComparison.OrdinalIgnoreCase)) return;
+        onEvent($"Bluetooth: {name}{(transport == "le" ? " (LE)" : "")} {(connected ? "connected" : "disconnected")}");
     }
 }

@@ -6,9 +6,16 @@
   "refresh": "5s",
   "time": {"from": "now-30m", "to": "now"},
   "schemaVersion": 39,
+  "annotations": {"list": [
+    {"builtIn": 1, "name": "Annotations & Alerts", "type": "dashboard", "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+     "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)"},
+    {"name": "Events", "datasource": {"type": "loki", "uid": "loki"}, "enable": true, "iconColor": "purple",
+     "expr": "{job=\"airpods\"} !~ \"^apps sending\"",
+     "target": {"refId": "Anno", "expr": "{job=\"airpods\"} !~ \"^apps sending\"", "queryType": "range"}}
+  ]},
   "panels": [
     {"type": "text", "title": "", "gridPos": {"x": 0, "y": 0, "w": 24, "h": 3},
-     "options": {"mode": "markdown", "content": "**Signal** is how strongly the PC hears the AirPods' own Bluetooth broadcasts: around -50 to -65 dBm is good, below -75 dBm is weak. **Audio sent** is what Windows hands to Bluetooth, so if it is clean while you hear crackling or stutter, the problem is the radio link or the headphones, not the PC. **Call mode** means an app opened the AirPods mic, which drops all audio to phone-call quality."}},
+     "options": {"mode": "markdown", "content": "**Signal** is how strongly the PC hears the AirPods' own Bluetooth broadcasts: around -50 to -65 dBm is good, below -75 dBm is weak. **Audio sent** is what Windows hands to Bluetooth, so if it is clean while you hear crackling or stutter, the problem is the radio link or the headphones, not the PC. **Call mode** means an app opened the AirPods mic, which drops all audio to phone-call quality. **What else was going on** (below) shows whether you were wearing them and using the PC, mutes, Wi-Fi traffic, driver CPU time and other Bluetooth devices; purple marks on the graphs are the monitor's events."}},
 
     {"type": "stat", "title": "Bluetooth link", "gridPos": {"x": 0, "y": 3, "w": 4, "h": 4},
      "datasource": {"type": "prometheus", "uid": "prometheus"},
@@ -137,6 +144,92 @@
      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 80, "lineWidth": 0},
        "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]},
        "mappings": [{"type": "value", "options": {"1": {"text": "sending", "color": "blue", "index": 0}}}]},
-       "overrides": []}}
+       "overrides": []}},
+
+    {"type": "row", "title": "What else was going on", "collapsed": false, "gridPos": {"x": 0, "y": 38, "w": 24, "h": 1}, "panels": []},
+
+    {"type": "state-timeline", "title": "You, the headphones and the PC", "gridPos": {"x": 0, "y": 39, "w": 24, "h": 7},
+     "description": "Worn comes from the AirPods' own broadcasts. Your head and body absorb Bluetooth, so the signal is often 20-30 dB weaker while they are on and you sit at the PC. Using the PC means keyboard or mouse input in the last minute. Muted rows catch Windows or another app (dictation tools like Wispr Flow) silencing audio.",
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "airpods_worn", "legendFormat": "AirPods worn"},
+       {"refId": "B", "expr": "airpods_pc_idle_seconds < bool 60", "legendFormat": "Using the PC"},
+       {"refId": "C", "expr": "airpods_pc_display_state", "legendFormat": "Display"},
+       {"refId": "D", "expr": "airpods_output_muted", "legendFormat": "Output muted in Windows"},
+       {"refId": "E", "expr": "max(airpods_app_muted)", "legendFormat": "An app muted in the mixer"},
+       {"refId": "F", "expr": "airpods_pc_wifi_channel", "legendFormat": "Wi-Fi band"}
+     ],
+     "options": {"mergeValues": true, "showValue": "auto", "alignValue": "left", "rowHeight": 0.8, "legend": {"showLegend": false}},
+     "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 80, "lineWidth": 0},
+       "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}},
+       "overrides": [
+         {"matcher": {"id": "byName", "options": "AirPods worn"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "off", "color": "#8e8e8e", "index": 0}, "1": {"text": "on head", "color": "green", "index": 1}}}]}]},
+         {"matcher": {"id": "byName", "options": "Using the PC"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "idle", "color": "#8e8e8e", "index": 0}, "1": {"text": "in use", "color": "blue", "index": 1}}}]}]},
+         {"matcher": {"id": "byName", "options": "Display"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "off", "color": "#8e8e8e", "index": 0}, "1": {"text": "on", "color": "green", "index": 1}, "2": {"text": "dimmed", "color": "yellow", "index": 2}}}]}]},
+         {"matcher": {"id": "byName", "options": "Output muted in Windows"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "no", "color": "green", "index": 0}, "1": {"text": "MUTED", "color": "red", "index": 1}}}]}]},
+         {"matcher": {"id": "byName", "options": "An app muted in the mixer"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "no", "color": "green", "index": 0}, "1": {"text": "MUTED", "color": "red", "index": 1}}}]}]},
+         {"matcher": {"id": "byName", "options": "Wi-Fi band"}, "properties": [{"id": "mappings", "value": [{"type": "range", "options": {"from": 1, "to": 14, "result": {"text": "2.4 GHz (shared with Bluetooth)", "color": "orange", "index": 0}}}, {"type": "range", "options": {"from": 15, "to": 255, "result": {"text": "5 GHz", "color": "green", "index": 1}}}]}]}
+       ]}},
+
+    {"type": "heatmap", "title": "Every broadcast's signal", "gridPos": {"x": 0, "y": 46, "w": 12, "h": 8},
+     "description": "How many AirPods broadcasts the PC heard at each signal strength. The signal graph above only keeps one value per scrape; this keeps every broadcast, so brief dips show up as cells low on the chart.",
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "sum by (le) (increase(airpods_broadcast_rssi_dbm_bucket[$__rate_interval]))", "format": "heatmap", "legendFormat": "{{le}}"}],
+     "options": {"calculate": false, "yAxis": {"axisPlacement": "left", "unit": "suffix: dBm"}, "rowsFrame": {"layout": "le"},
+                 "color": {"mode": "scheme", "scheme": "Oranges", "steps": 64, "exponent": 0.5, "fill": "dark-orange", "reverse": false},
+                 "cellGap": 1, "showValue": "never", "tooltip": {"mode": "single", "yHistogram": false, "showColorScale": false},
+                 "legend": {"show": true}, "exemplars": {"color": "rgba(255,0,255,0.7)"}, "filterValues": {"le": 1e-9}},
+     "fieldConfig": {"defaults": {}, "overrides": []}},
+
+    {"type": "timeseries", "title": "Broadcasts the PC heard", "gridPos": {"x": 12, "y": 46, "w": 12, "h": 8},
+     "description": "Fewer broadcasts per second at the same distance means the PC is missing them, a sign the radio link is struggling. Weak share is the fraction at -80 dBm or worse.",
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "rate(airpods_ble_broadcasts_total[1m])", "legendFormat": "heard per second"},
+       {"refId": "B", "expr": "sum(increase(airpods_broadcast_rssi_dbm_bucket{le=~\"-80(.0)?\"}[1m])) / sum(increase(airpods_broadcast_rssi_dbm_count[1m]))", "legendFormat": "weak share"}
+     ],
+     "fieldConfig": {"defaults": {"min": 0, "decimals": 1, "custom": {"lineWidth": 2, "fillOpacity": 10, "spanNulls": false}},
+       "overrides": [{"matcher": {"id": "byName", "options": "weak share"}, "properties": [{"id": "unit", "value": "percentunit"}, {"id": "max", "value": 1}, {"id": "custom.axisPlacement", "value": "right"}, {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}]}},
+
+    {"type": "timeseries", "title": "PC network traffic", "gridPos": {"x": 0, "y": 54, "w": 12, "h": 8},
+     "description": "Most PCs' Wi-Fi card also does Bluetooth through the same antennas, so heavy Wi-Fi traffic (downloads, updates, installs) takes airtime from the AirPods, even on 5 GHz.",
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "sum by (type, direction) (rate(airpods_pc_network_bytes_total[$__rate_interval])) * 8", "legendFormat": "{{type}} {{direction}}"}],
+     "fieldConfig": {"defaults": {"unit": "bps", "min": 0, "custom": {"lineWidth": 2, "fillOpacity": 10, "spanNulls": false}}, "overrides": []}},
+
+    {"type": "timeseries", "title": "PC CPU time", "gridPos": {"x": 12, "y": 54, "w": 12, "h": 8},
+     "description": "Driver time is DPCs and interrupts. Long bursts of it (often from Wi-Fi, GPU or USB drivers) can delay the Bluetooth stack and cause crackle even when the audio Windows sent was clean. It usually shows on one CPU first.",
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "1 - sum(rate(airpods_pc_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])) / count(airpods_pc_cpu_seconds_total{mode=\"idle\"})", "legendFormat": "busy, all CPUs"},
+       {"refId": "B", "expr": "sum(rate(airpods_pc_cpu_seconds_total{mode=~\"dpc|interrupt\"}[$__rate_interval])) / count(airpods_pc_cpu_seconds_total{mode=\"idle\"})", "legendFormat": "drivers, all CPUs"},
+       {"refId": "C", "expr": "max(sum by (cpu) (rate(airpods_pc_cpu_seconds_total{mode=~\"dpc|interrupt\"}[$__rate_interval])))", "legendFormat": "drivers, busiest CPU"}
+     ],
+     "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "decimals": 1, "custom": {"lineWidth": 2, "fillOpacity": 0, "spanNulls": false}}, "overrides": []}},
+
+    {"type": "state-timeline", "title": "Paired Bluetooth devices", "gridPos": {"x": 0, "y": 62, "w": 12, "h": 6},
+     "description": "Another device connected to the PC's Bluetooth at the same time shares the radio with the AirPods.",
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "airpods_pc_bluetooth_device_connected", "legendFormat": "{{device}}"}],
+     "options": {"mergeValues": true, "showValue": "auto", "alignValue": "left", "rowHeight": 0.8, "legend": {"showLegend": false}},
+     "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 80, "lineWidth": 0},
+       "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]},
+       "mappings": [{"type": "value", "options": {"0": {"text": "not connected", "color": "#8e8e8e", "index": 0}, "1": {"text": "connected", "color": "blue", "index": 1}}}]},
+       "overrides": []}},
+
+    {"type": "timeseries", "title": "Volume in Windows", "gridPos": {"x": 12, "y": 62, "w": 12, "h": 6},
+     "description": "The AirPods output's volume slider and each sending app's slider in the Windows volume mixer.",
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "airpods_output_volume_ratio", "legendFormat": "AirPods output"},
+       {"refId": "B", "expr": "airpods_app_volume_ratio", "legendFormat": "{{app}}"}
+     ],
+     "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1, "decimals": 0, "custom": {"lineWidth": 2, "fillOpacity": 0, "spanNulls": false}}, "overrides": []}},
+
+    {"type": "logs", "title": "Events", "gridPos": {"x": 0, "y": 68, "w": 24, "h": 10},
+     "description": "Everything the monitor noticed: the Bluetooth link, the AirPods being put on or taken off, the display, PC use, Wi-Fi changes, devices plugged in or removed, mutes and volume changes, and which apps are sending.",
+     "datasource": {"type": "loki", "uid": "loki"},
+     "targets": [{"refId": "A", "expr": "{job=\"airpods\"}", "queryType": "range"}],
+     "options": {"showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true, "dedupStrategy": "none", "prettifyLogMessage": false}}
   ]
 }
