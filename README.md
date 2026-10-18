@@ -8,8 +8,12 @@ It watches three things at once, so that when audio crackles, stutters or cuts o
   audio-engine glitches, gaps and click-like jumps in the exact audio handed to Bluetooth.
 - **Windows' view of the device.** Whether the stereo output exists and is the default, whether an app has
   the mic open (which forces low-quality "call mode"), and which apps are streaming to it.
-- **The radio.** Whether the classic Bluetooth link is connected, plus signal strength and battery from the
-  headphones' own Bluetooth LE broadcasts.
+- **The radio.** Whether the classic Bluetooth link is connected, plus signal strength, battery and whether
+  they are being worn, from the headphones' own Bluetooth LE broadcasts.
+- **What else was going on at the PC.** Whether the display was on and anyone was using the keyboard or mouse,
+  volume and mute (for the output and per app, since dictation tools mute other apps), Wi-Fi channel and
+  traffic, CPU time spent in drivers (DPCs and interrupts), the other paired Bluetooth devices, and devices
+  being plugged in or removed.
 
 If the audio Windows sends is clean while you hear problems, the fault is in the radio link or the headphones,
 not the PC. No admin rights are needed.
@@ -44,6 +48,7 @@ out\AirPodsExporter.exe --metrics-port 9410 --quiet
 | `--name <text>` | Match audio and Bluetooth devices whose name contains this. Default `AirPods Max`. |
 | `--model <hex>` | Apple model ID to read battery and signal from BLE broadcasts. Default `202D`. |
 | `--metrics-port <port>` | Serve metrics on `http://127.0.0.1:<port>/metrics`. |
+| `--loki-url <url>` | Also send events to Loki at this base URL, e.g. `http://127.0.0.1:3100`. |
 | `--quiet` | Don't print a line every second. Events and the summary are still printed. |
 | `--seconds <n>` | Stop after `n` seconds instead of running until Ctrl+C. |
 | `--csv <path>` | Per-second CSV, with a `.log` next to it. On by default unless `--metrics-port` is set. |
@@ -57,7 +62,17 @@ summary lists the Apple model IDs it did hear.
 
 Add the scrape job from [`prometheus/scrape-config.yml`](prometheus/scrape-config.yml) to your Prometheus
 config. [`grafana/airpods.json`](grafana/airpods.json) is a ready-made dashboard; it expects a Prometheus data
-source with the UID `prometheus`, so change that UID in the file if yours differs.
+source with the UID `prometheus` and a Loki data source with the UID `loki`, so change those UIDs in the file
+if yours differ.
+
+## Events
+
+Besides metrics, the exporter notices events: the Bluetooth link changing, the headphones being put on or
+taken off or changing other broadcast flags, the default output or volume changing, an app being muted,
+the display turning on or off, the PC going idle or being used again, Wi-Fi roaming or changing band,
+another Bluetooth device connecting, devices being plugged in or removed, and which apps are sending.
+They are printed, and with `--loki-url` also sent to Loki as `{job="airpods", service_name="airpods-exporter"}`.
+The dashboard shows them in an Events panel and as annotations on every graph.
 
 ## Metrics
 
@@ -84,6 +99,25 @@ source with the UID `prometheus`, so change that UID in the file if yours differ
 | `airpods_audio_clipped_samples_total` | counter | Samples sent at or above full scale |
 | `airpods_bluetooth_link_changes_total` | counter | Times the Bluetooth link connected or disconnected |
 | `airpods_ble_broadcasts_total` | counter | Headphone broadcasts heard |
+| `airpods_broadcast_rssi_dbm` | histogram | Signal strength of every broadcast heard, so dips between scrapes are kept |
+| `airpods_worn` | gauge | 1 while the headphones report being worn |
+| `airpods_ble_status` | gauge | Raw status byte of the broadcasts, for decoding other flags |
+| `airpods_output_volume_ratio` | gauge | The output's volume slider in Windows (0-1) |
+| `airpods_output_muted` | gauge | 1 while the output is muted in Windows |
+| `airpods_app_volume_ratio{app}` | gauge | Each sending app's slider in the Windows volume mixer |
+| `airpods_app_muted{app}` | gauge | 1 while a sending app is muted in the mixer |
+| `airpods_app_peak_dbfs{app}` | gauge | Each sending app's current peak level (-120 = silent) |
+| `airpods_pc_display_state` | gauge | The PC's display: 0 = off, 1 = on, 2 = dimmed |
+| `airpods_pc_idle_seconds` | gauge | Seconds since the last keyboard or mouse input |
+| `airpods_pc_cpu_seconds_total{cpu,mode}` | counter | CPU time per CPU in `idle`, `user`, `system`, `dpc` and `interrupt` |
+| `airpods_pc_wifi_connected` | gauge | 1 while connected to Wi-Fi |
+| `airpods_pc_wifi_info{ssid,bssid,band}` | gauge | The network and access point in use |
+| `airpods_pc_wifi_channel` | gauge | Wi-Fi channel (1-14 share the 2.4 GHz band with Bluetooth) |
+| `airpods_pc_wifi_signal_percent` | gauge | Wi-Fi signal quality |
+| `airpods_pc_wifi_receive_rate_mbps`, `airpods_pc_wifi_transmit_rate_mbps` | gauge | Wi-Fi link rates |
+| `airpods_pc_network_bytes_total{interface,type,direction}` | counter | Bytes moved by each network adapter |
+| `airpods_pc_bluetooth_device_connected{device,transport}` | gauge | 1 for each paired Bluetooth device that is connected |
+| `airpods_loki_queued_lines`, `airpods_loki_push_failures_total`, `airpods_loki_dropped_lines_total` | | Event delivery to Loki, with `--loki-url` |
 
 ## Caveats
 
@@ -93,4 +127,8 @@ source with the UID `prometheus`, so change that UID in the file if yours differ
 - Click detection is a heuristic. It ignores ordinary music, but it has not been validated against real
   glitch clicks.
 - Battery and signal decoding follows Apple's proximity-pairing broadcast format and only works for Apple
-  headphones.
+  headphones. "Worn" is the format's in-ear bit (`0x02` of the status byte); on AirPods Max it was seen set
+  while on a head (`0x2B`) and clear once taken off (`0x29`, `0x21`).
+- Nothing on the PC can see audio that Windows sent but the headphones never played, for example while they
+  were switched to another Apple device. If the audio sent was clean and you still heard nothing, that is where
+  it went missing.
