@@ -1,0 +1,6 @@
+bin/
+obj/
+out/
+*.csv
+*.log
+*.wav

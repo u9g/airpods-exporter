@@ -1,0 +1,142 @@
+{
+  "uid": "airpods",
+  "title": "AirPods",
+  "tags": ["airpods", "bluetooth", "audio"],
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": {"from": "now-30m", "to": "now"},
+  "schemaVersion": 39,
+  "panels": [
+    {"type": "text", "title": "", "gridPos": {"x": 0, "y": 0, "w": 24, "h": 3},
+     "options": {"mode": "markdown", "content": "**Signal** is how strongly the PC hears the AirPods' own Bluetooth broadcasts: around -50 to -65 dBm is good, below -75 dBm is weak. **Audio sent** is what Windows hands to Bluetooth, so if it is clean while you hear crackling or stutter, the problem is the radio link or the headphones, not the PC. **Call mode** means an app opened the AirPods mic, which drops all audio to phone-call quality."}},
+
+    {"type": "stat", "title": "Bluetooth link", "gridPos": {"x": 0, "y": 3, "w": 4, "h": 4},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "airpods_bluetooth_connected"}],
+     "options": {"colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center",
+                 "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+     "fieldConfig": {"defaults": {"noValue": "Monitor not running",
+       "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]},
+       "mappings": [{"type": "value", "options": {"0": {"text": "Disconnected", "color": "red", "index": 0}, "1": {"text": "Connected", "color": "green", "index": 1}}}]},
+       "overrides": []}},
+
+    {"type": "stat", "title": "Signal", "gridPos": {"x": 4, "y": 3, "w": 4, "h": 4},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "airpods_signal_rssi_dbm"}],
+     "options": {"colorMode": "value", "graphMode": "area", "textMode": "value", "justifyMode": "center",
+                 "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+     "fieldConfig": {"defaults": {"unit": "suffix: dBm", "decimals": 0, "noValue": "No broadcasts",
+       "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": -80}, {"color": "yellow", "value": -72}, {"color": "green", "value": -65}]}},
+       "overrides": []}},
+
+    {"type": "stat", "title": "Battery", "gridPos": {"x": 8, "y": 3, "w": 4, "h": 4},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "airpods_battery_percent"}],
+     "options": {"colorMode": "value", "graphMode": "none", "textMode": "value", "justifyMode": "center",
+                 "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+     "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "noValue": "Unknown",
+       "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 20}, {"color": "green", "value": 40}]}},
+       "overrides": []}},
+
+    {"type": "stat", "title": "Call mode", "gridPos": {"x": 12, "y": 3, "w": 4, "h": 4},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "airpods_call_mode"}],
+     "options": {"colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center",
+                 "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+     "fieldConfig": {"defaults": {
+       "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]},
+       "mappings": [{"type": "value", "options": {"0": {"text": "Off", "color": "green", "index": 0}, "1": {"text": "ON (call quality)", "color": "red", "index": 1}}}]},
+       "overrides": []}},
+
+    {"type": "stat", "title": "Audio sent", "gridPos": {"x": 16, "y": 3, "w": 4, "h": 4},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "airpods_audio_sending"}],
+     "options": {"colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center",
+                 "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+     "fieldConfig": {"defaults": {
+       "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]},
+       "mappings": [{"type": "value", "options": {"0": {"text": "Nothing playing", "color": "#8e8e8e", "index": 0}, "1": {"text": "Sending", "color": "blue", "index": 1}}}]},
+       "overrides": []}},
+
+    {"type": "stat", "title": "Link drops (last 15 min)", "gridPos": {"x": 20, "y": 3, "w": 4, "h": 4},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "round(increase(airpods_bluetooth_link_changes_total[15m]))"}],
+     "options": {"colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center",
+                 "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+     "fieldConfig": {"defaults": {"decimals": 0,
+       "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}},
+       "overrides": []}},
+
+    {"type": "timeseries", "title": "Signal strength at the PC", "gridPos": {"x": 0, "y": 7, "w": 12, "h": 9},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "airpods_signal_rssi_dbm", "legendFormat": "signal"},
+       {"refId": "B", "expr": "min_over_time(airpods_signal_rssi_dbm[1m])", "legendFormat": "worst in last minute"}
+     ],
+     "fieldConfig": {"defaults": {"unit": "suffix: dBm", "min": -100, "max": -30, "decimals": 0,
+       "custom": {"lineWidth": 2, "fillOpacity": 0, "spanNulls": false, "thresholdsStyle": {"mode": "area"}},
+       "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": -80}, {"color": "yellow", "value": -72}, {"color": "green", "value": -65}]}},
+       "overrides": [{"matcher": {"id": "byName", "options": "worst in last minute"}, "properties": [{"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}}, {"id": "custom.lineWidth", "value": 1}]}]}},
+
+    {"type": "timeseries", "title": "Audio level Windows sent", "gridPos": {"x": 12, "y": 7, "w": 12, "h": 9},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "airpods_audio_peak_dbfs", "legendFormat": "peak"},
+       {"refId": "B", "expr": "airpods_audio_rms_dbfs", "legendFormat": "average (RMS)"}
+     ],
+     "fieldConfig": {"defaults": {"unit": "dB", "min": -100, "max": 0, "decimals": 1,
+       "custom": {"lineWidth": 2, "fillOpacity": 10, "spanNulls": false}},
+       "overrides": []}},
+
+    {"type": "timeseries", "title": "Stream problems per minute", "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+     "description": "Windows audio glitches mean the PC itself stalled. Clicks are sudden isolated jumps in the audio Windows sent. Link changes are Bluetooth disconnects and reconnects.",
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "increase(airpods_audio_glitches_total[1m])", "legendFormat": "Windows audio glitches"},
+       {"refId": "B", "expr": "increase(airpods_audio_clicks_total[1m])", "legendFormat": "clicks"},
+       {"refId": "C", "expr": "increase(airpods_bluetooth_link_changes_total[1m])", "legendFormat": "link changes"},
+       {"refId": "D", "expr": "increase(airpods_audio_clipped_samples_total[1m])", "legendFormat": "clipped samples"}
+     ],
+     "fieldConfig": {"defaults": {"min": 0, "decimals": 0, "custom": {"lineWidth": 2, "fillOpacity": 10, "drawStyle": "line", "showPoints": "never"}},
+       "overrides": [{"matcher": {"id": "byName", "options": "clipped samples"}, "properties": [{"id": "custom.axisPlacement", "value": "right"}]}]}},
+
+    {"type": "timeseries", "title": "Audio delivered on time", "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+     "description": "How much audio Windows delivered each second, relative to real time. 100% while playing is normal; dips while music is playing mean the PC stalled.",
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "airpods_audio_coverage_ratio", "legendFormat": "delivered"}],
+     "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1.2, "decimals": 0,
+       "custom": {"lineWidth": 2, "fillOpacity": 10, "spanNulls": false, "thresholdsStyle": {"mode": "line"}},
+       "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 0.9}]}},
+       "overrides": []}},
+
+    {"type": "state-timeline", "title": "Connection and modes", "gridPos": {"x": 0, "y": 24, "w": 24, "h": 8},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [
+       {"refId": "A", "expr": "up{job=\"airpods\"}", "legendFormat": "Monitor running"},
+       {"refId": "B", "expr": "airpods_bluetooth_connected", "legendFormat": "Bluetooth link"},
+       {"refId": "C", "expr": "airpods_output_present", "legendFormat": "Windows output present"},
+       {"refId": "D", "expr": "airpods_output_is_default", "legendFormat": "Default output"},
+       {"refId": "E", "expr": "airpods_audio_sending", "legendFormat": "Sending audio"},
+       {"refId": "F", "expr": "airpods_call_mode", "legendFormat": "Call mode"},
+       {"refId": "G", "expr": "airpods_hands_free_enabled", "legendFormat": "Hands-Free enabled"}
+     ],
+     "options": {"mergeValues": true, "showValue": "auto", "alignValue": "left", "rowHeight": 0.8, "legend": {"showLegend": false}},
+     "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 80, "lineWidth": 0},
+       "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]},
+       "mappings": [{"type": "value", "options": {"0": {"text": "no", "color": "red", "index": 0}, "1": {"text": "yes", "color": "green", "index": 1}}}]},
+       "overrides": [
+         {"matcher": {"id": "byName", "options": "Call mode"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "off", "color": "green", "index": 0}, "1": {"text": "ON", "color": "red", "index": 1}}}]}]},
+         {"matcher": {"id": "byName", "options": "Sending audio"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "idle", "color": "#8e8e8e", "index": 0}, "1": {"text": "sending", "color": "blue", "index": 1}}}]}]},
+         {"matcher": {"id": "byName", "options": "Hands-Free enabled"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "disabled", "color": "#8e8e8e", "index": 0}, "1": {"text": "enabled", "color": "blue", "index": 1}}}]}]}
+       ]}},
+
+    {"type": "state-timeline", "title": "Apps sending audio to the AirPods", "gridPos": {"x": 0, "y": 32, "w": 24, "h": 6},
+     "datasource": {"type": "prometheus", "uid": "prometheus"},
+     "targets": [{"refId": "A", "expr": "airpods_app_sending", "legendFormat": "{{app}}"}],
+     "options": {"mergeValues": true, "showValue": "never", "alignValue": "left", "rowHeight": 0.8, "legend": {"showLegend": false}},
+     "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 80, "lineWidth": 0},
+       "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]},
+       "mappings": [{"type": "value", "options": {"1": {"text": "sending", "color": "blue", "index": 0}}}]},
+       "overrides": []}}
+  ]
+}
